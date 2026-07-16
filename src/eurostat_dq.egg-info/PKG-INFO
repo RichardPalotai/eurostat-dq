@@ -1,3 +1,27 @@
+Metadata-Version: 2.4
+Name: eurostat-dq
+Version: 0.1.0
+Summary: Eurostat data-quality pipeline: ingest, validate, and report on Eurostat datasets
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: eurostat>=1.1.1
+Requires-Dist: requests>=2.32
+Requires-Dist: pandas>=3.0
+Requires-Dist: pyarrow>=21.0
+Requires-Dist: numpy>=2.5
+Requires-Dist: scipy>=1.14
+Requires-Dist: pydantic>=2.13
+Requires-Dist: great_expectations>=1.19
+Requires-Dist: scikit-learn>=1.9
+Requires-Dist: matplotlib>=3.11
+Requires-Dist: geopandas>=1.1
+Provides-Extra: dev
+Requires-Dist: pytest>=9.1; extra == "dev"
+Requires-Dist: jupyter>=1.1; extra == "dev"
+Requires-Dist: ipykernel>=7.3; extra == "dev"
+Dynamic: license-file
+
 # Eurostat data project
 
 I dedicated this project to learn new Data Science skills and further my knowledge in this field via applying my theoretical insights to Statistics.
