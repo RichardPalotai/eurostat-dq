@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+BASE_REQUEST_URL = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
 
 @dataclass
 class DatasetConfig:
