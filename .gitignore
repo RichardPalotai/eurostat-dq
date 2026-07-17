@@ -9,3 +9,5 @@ __pycache__/
 PROJECT_PLAN.md
 PROJECT.md
 setup_github.sh
+
+.DS_Store
