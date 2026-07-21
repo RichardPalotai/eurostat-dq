@@ -12,7 +12,7 @@ produces a report.
 > Packages: pandas, NumPy
 
 **Data ingestion**
-> Packages: eurostat
+> Packages: eurostat, requests
 
 **Data validation / quality**
 > Packages: pydantic, great_expectations
@@ -70,6 +70,39 @@ The pipeline handles **two** Eurostat datasets through a shared, config-driven d
 
 ---
 
+## Ingestion — two paths
+
+`ingest.py` offers two ways to fetch a dataset. Both cache to `data/raw/` as Parquet and
+skip the network on a cache hit (unless `use_cache=False`).
+
+| | `fetch_dataset(code)` | `fetch_dataset_json(code, **filters)` |
+|---|---|---|
+| Source | `eurostat` package (`get_data_df`) | raw REST API + JSON-stat, parsed by hand |
+| Shape returned | **wide** (one column per year) | **long** (one row per observation) |
+| Filtering | none (whole dataset) | **server-side** via query params (`age="TOTAL"`, `geo="HU11"`, …) |
+| Cache file | `{code}.parquet` | `{code}_json{_dim=value…}.parquet` |
+
+```python
+from eurostat_dq.ingest import fetch_dataset, fetch_dataset_json
+
+wide = fetch_dataset("demo_r_d2jan")
+long = fetch_dataset_json("demo_r_d2jan", age="TOTAL", sex="T", geo="HU11")
+```
+
+**Why a hand-written JSON-stat parser?** The REST response is a serialized n-dimensional
+cube (`id` / `size` / `dimension` + a sparse `value` dict keyed by flat index), not rows.
+The parser is dataset-agnostic: it reads the dimension order from `id` and decodes each
+flat index with `numpy.unravel_index`, so the same code serves both datasets. Filtering
+server-side keeps the payload small — an unfiltered `demo_r_d2jan` is megabytes, while the
+sliced request is a fraction of that (and Eurostat rejects overly large queries with HTTP
+413, so filtering is required for wide dimensions).
+
+**Note:** `fetch_dataset_json` caches the *decoded* DataFrame (Parquet), so the raw
+JSON-stat metadata — publication timestamp (`updated`) and per-cell status flags
+(`b` break, `p` provisional, `e` estimated) — is not retained. Those would be useful for
+the timeliness and anomaly steps later; capturing them is a possible future change
+(cache the raw JSON instead).
+
 ## Components
 
 ### Setup
@@ -113,7 +146,8 @@ _Not implemented yet._
 | Component | State |
 |---|---|
 | `config.py` — dataset registry | ✅ done |
-| `ingest.py` — API fetch + parquet cache | ✅ done |
+| `ingest.py` — `fetch_dataset` (package, wide) + parquet cache | ✅ done |
+| `ingest.py` — `fetch_dataset_json` (REST + JSON-stat, long) | ✅ done |
 | `clean.py` — tidy + per-dataset slice | ⬜ next |
 | `schema.py` — pydantic row validation | ⬜ |
 | `expectations.py` — 5 QA dimensions | ⬜ |
