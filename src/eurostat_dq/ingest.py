@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import requests, json
 from pathlib import Path
-from .config import PROJECT_ROOT, BASE_REQUEST_URL, DATASETS
+from .config import PROJECT_ROOT, BASE_REQUEST_URL
 
 def fetch_dataset(code: str, *, use_cache: bool = True) -> pd.DataFrame:
     """Fetches dataset with eurostat.get_data_df and if use_cache=True it searches the data/raw folder first before fetching from the web"""
@@ -51,7 +51,7 @@ def fetch_dataset_json(code: str, *, use_cache: bool = True, **filters) -> pd.Da
             inv = {int(v): k for k, v in d["dimension"][name]["category"]["index"].items()}
             cols[name] = [inv[i] for i in ind]
         cols["value"] = [float(v) for v in d["value"].values()]
-        df = pd.DataFrame(cols)
+        df = pd.DataFrame(cols).sort_values(by=['time', 'geo'], ascending=[True, True])
 
         print("DataFrame acquired from the internet")
         cache_path.parent.mkdir(parents=True, exist_ok=True)
