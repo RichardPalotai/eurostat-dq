@@ -34,9 +34,10 @@ The pipeline handles **two** Eurostat datasets through a shared, config-driven d
 |---|---|---|
 | Meaning | Population on 1 January | Greenhouse-gas emissions |
 | Geography | **NUTS 2 regions** (e.g. `HU11`) | **countries** (e.g. `HU`) |
-| Dimension filters | `age = TOTAL`, `sex = T` | `airpol = GHG`, `src_crf = TOTX4_MEMO` |
+| Dimension filters | `age = TOTAL`, `sex = T` | `airpol = GHG`, `src_crf = TOTX4_MEMO`, `unit = THS_T` |
+| Unit | `NR` (persons — single unit) | `THS_T` (thousand tonnes = kt) |
 | Valid `geo` | 346 NUTS 2 codes (length 4) | 31 country codes (length 2) |
-| Value range | `0` to `15,907,951` (persons) | `1.84` to `1,253,128` (kt CO₂-eq) |
+| Value range | `0` to `20,000,000` (persons) | `0` to `2,000,000` (kt CO₂-eq) |
 | Timeliness threshold | 2 years | 3 years (inventories lag) |
 
 **Key decisions & data quirks (noted while inspecting the data):**
@@ -63,6 +64,41 @@ The pipeline handles **two** Eurostat datasets through a shared, config-driven d
   consistent: if aggregates were valid geos but the value range only admitted a real
   region's population, an `EU28` row would pass the consistency check and fail the accuracy
   check — a false positive on perfectly correct data.
+- **The emissions dataset publishes every figure twice, in two units** — `MIO_T` (million
+  tonnes) and `THS_T` (thousand tonnes), differing by exactly ×1000:
+
+  | geo | time | unit | value |
+  |---|---|---|---|
+  | HU | 2020 | `MIO_T` | 63.03 |
+  | HU | 2020 | `THS_T` | 63,033.37 |
+
+  Because the original filters collapsed `airpol` and `src_crf` but **not** `unit`, every
+  observation survived twice — 2,170 rows for 1,085 real measurements. This silently broke
+  **uniqueness** (duplicate `(geo, time)` keys) and made the value statistics meaningless:
+  the median landed *between* the two scales, and mean/median hit 48 — which looks like
+  extreme skew but was really a 1000× unit gap.
+
+  Found by plotting the value distribution during EDA, not by inspecting rows. Fixed by
+  adding `unit = THS_T` to the filters; `demo_r_d2jan` was checked too and carries only the
+  single unit `NR`, so it was unaffected.
+- **Value ranges are domain-reasoned, not observed.** A bound measured from the data can
+  never be violated by that data, so the accuracy check would be tautological — and worse,
+  an observed bound drifts into false positives as the data legitimately moves.
+
+  | | lower | upper | reasoning |
+  |---|---|---|---|
+  | `demo_r_d2jan` | `0` | `20,000,000` persons | largest NUTS 2 region is ~15.9M (Istanbul); rounded up for headroom |
+  | `env_air_gge` | `0` | `2,000,000` kt | historical peak is Germany 1990 at ~1.25M kt; rounded up for headroom |
+
+  The **lower bound of `0`** generalises (neither quantity can be negative), but the upper
+  bound does not — it depends entirely on the quantity and its unit, which is exactly why
+  `value_range` lives per-dataset in the registry rather than as a shared constant.
+
+  The emissions floor is `0` rather than the observed minimum (Malta 2016, 1,840 kt)
+  precisely because the dataset tracks emissions *falling* — an observed floor would raise a
+  false accuracy failure the first time any country dropped below it. `0` is valid here only
+  because `src_crf = TOTX4_MEMO` excludes LULUCF, which genuinely can be negative (carbon
+  sinks).
 - **Open question:** a population value of `0` appeared during exploration, flagged as a
   candidate data-quality issue / test case for the accuracy checks.
 - **Possible future metric:** the `XX` share per country measures how well a country's data
