@@ -4,7 +4,7 @@ Ingests two Eurostat datasets, cleans them, validates them across five data-qual
 dimensions (accuracy, completeness, consistency, uniqueness, timeliness), flags anomalies,
 and reports. A learning project applying statistics to real, messy public data.
 
-**Stack:** pandas · NumPy · pydantic · great_expectations · scikit-learn · geopandas · eurostat/requests · Matplotlib
+**Stack:** pandas · NumPy · SciPy · pydantic · great_expectations · scikit-learn · matplotlib · geopandas · eurostat/requests · pyarrow
 
 ---
 
@@ -21,7 +21,7 @@ ingest/clean/validate code serves both — adding a third means one new registry
 | Unit | `NR` (persons) | `THS_T` (kt CO₂-eq) |
 | Valid `geo` | 346 NUTS 2 codes (len 4) | 31 country codes (len 2) |
 | Value range | `0`–`20,000,000` | `0`–`2,000,000` |
-| Staleness threshold | 2 yr | 3 yr (inventories lag) |
+| Staleness threshold | 1 yr | 2 yr (inventories lag) |
 
 ## Key decisions & data quirks
 
