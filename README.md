@@ -1,147 +1,130 @@
-# Eurostat data project
+# Eurostat Data-Quality Pipeline
 
-I dedicated this project to learn new Data Science skills and further my knowledge in this field via applying my theoretical insights to Statistics.
+Ingests two Eurostat datasets, cleans them, validates them across five data-quality
+dimensions (accuracy, completeness, consistency, uniqueness, timeliness), flags anomalies,
+and reports. A learning project applying statistics to real, messy public data.
 
-The pipeline ingests two Eurostat datasets, cleans them, validates them across five data-quality
-dimensions (accuracy, completeness, consistency, uniqueness, timeliness), flags anomalies, and
-produces a report.
-
-## Overview
-
-**Core data wrangling**
-> Packages: pandas, NumPy
-
-**Data ingestion**
-> Packages: eurostat, requests
-
-**Data validation / quality**
-> Packages: pydantic, great_expectations
-
-**Anomaly detection / ML**
-> Packages: scikit-learn
-
-**Exploration and reporting**
-> Packages: Jupyter, matplotlib, geopandas
+**Stack:** pandas · NumPy · pydantic · great_expectations · scikit-learn · geopandas · eurostat/requests
 
 ---
 
 ## Datasets
 
-The pipeline handles **two** Eurostat datasets through a shared, config-driven design
-(a "dataset registry" in `config.py`), so the same ingest/clean/validate code serves both.
+Both datasets run through one **config-driven registry** (`config.py`), so the same
+ingest/clean/validate code serves both — adding a third means one new registry entry.
 
 | | `demo_r_d2jan` | `env_air_gge` |
 |---|---|---|
-| Meaning | Population on 1 January | Greenhouse-gas emissions |
-| Geography | **NUTS 2 regions** (e.g. `HU11`) | **countries** (e.g. `HU`) |
-| Dimension filters | `age = TOTAL`, `sex = T` | `airpol = GHG`, `src_crf = TOTX4_MEMO`, `unit = THS_T` |
-| Unit | `NR` (persons — single unit) | `THS_T` (thousand tonnes = kt) |
-| Valid `geo` | 346 NUTS 2 codes (length 4) | 31 country codes (length 2) |
-| Value range | `0` to `20,000,000` (persons) | `0` to `2,000,000` (kt CO₂-eq) |
-| Timeliness threshold | 2 years | 3 years (inventories lag) |
+| Meaning | Population on 1 Jan | GHG emissions |
+| Geography | NUTS 2 regions (`HU11`) | countries (`HU`) |
+| Filters | `age=TOTAL`, `sex=T` | `airpol=GHG`, `src_crf=TOTX4_MEMO`, `unit=THS_T` |
+| Unit | `NR` (persons) | `THS_T` (kt CO₂-eq) |
+| Valid `geo` | 346 NUTS 2 codes (len 4) | 31 country codes (len 2) |
+| Value range | `0`–`20,000,000` | `0`–`2,000,000` |
+| Staleness threshold | 2 yr | 3 yr (inventories lag) |
 
-**Key decisions & data quirks (noted while inspecting the data):**
+## Key decisions & data quirks
 
-- **`src_crf = TOTX4_MEMO`** = total GHG **excluding LULUCF** (land use / forestry) and
-  memo items, the standard headline figure. LULUCF is volatile and can be negative, so
-  it is excluded to keep the value range and anomaly detection clean.
-- **NUTS country codes are not ISO:** Greece is `EL` (not `GR`) and the UK is `UK`
-  (not `GB`). The country list uses these.
-- **Regional datasets mix geography levels:** `demo_r_d2jan` contains country, NUTS 1,
-  NUTS 2 and NUTS 3 rows together, so the pipeline filters to length-4 codes for true
-  NUTS 2.
-- **Aggregates and unallocated residuals are excluded from `valid_geo`.** The unit of
-  analysis is "one row = one NUTS 2 region", and these rows break that:
-  - **Aggregates** (`EU28`, `EFTA`) are correct data at a *different level of
-    aggregation*. Keeping them would double-count in any sum and stretch the accuracy
-    range by ~30x (the EU28 total is ~514 million, versus ~15.9 million for the largest
-    single region).
-  - **`XX` residuals** (`ALXX`, `FRXX`, `HUXX`, `MKXX`) are population that could not be
-    assigned to a specific region — legitimate, but not a region.
-
-  Both are dropped during cleaning, *upstream* of validation, so `valid_geo` describes
-  what survives cleaning rather than what Eurostat ships. This keeps the config internally
-  consistent: if aggregates were valid geos but the value range only admitted a real
-  region's population, an `EU28` row would pass the consistency check and fail the accuracy
-  check — a false positive on perfectly correct data.
-- **The emissions dataset publishes every figure twice, in two units** — `MIO_T` (million
-  tonnes) and `THS_T` (thousand tonnes), differing by exactly ×1000:
-
-  | geo | time | unit | value |
-  |---|---|---|---|
-  | HU | 2020 | `MIO_T` | 63.03 |
-  | HU | 2020 | `THS_T` | 63,033.37 |
-
-  Because the original filters collapsed `airpol` and `src_crf` but **not** `unit`, every
-  observation survived twice — 2,170 rows for 1,085 real measurements. This silently broke
-  **uniqueness** (duplicate `(geo, time)` keys) and made the value statistics meaningless:
-  the median landed *between* the two scales, and mean/median hit 48 — which looks like
-  extreme skew but was really a 1000× unit gap.
-
-  Found by plotting the value distribution during EDA, not by inspecting rows. Fixed by
-  adding `unit = THS_T` to the filters; `demo_r_d2jan` was checked too and carries only the
-  single unit `NR`, so it was unaffected.
-- **Value ranges are domain-reasoned, not observed.** A bound measured from the data can
-  never be violated by that data, so the accuracy check would be tautological — and worse,
-  an observed bound drifts into false positives as the data legitimately moves.
-
-  | | lower | upper | reasoning |
-  |---|---|---|---|
-  | `demo_r_d2jan` | `0` | `20,000,000` persons | largest NUTS 2 region is ~15.9M (Istanbul); rounded up for headroom |
-  | `env_air_gge` | `0` | `2,000,000` kt | historical peak is Germany 1990 at ~1.25M kt; rounded up for headroom |
-
-  The **lower bound of `0`** generalises (neither quantity can be negative), but the upper
-  bound does not — it depends entirely on the quantity and its unit, which is exactly why
-  `value_range` lives per-dataset in the registry rather than as a shared constant.
-
-  The emissions floor is `0` rather than the observed minimum (Malta 2016, 1,840 kt)
-  precisely because the dataset tracks emissions *falling* — an observed floor would raise a
-  false accuracy failure the first time any country dropped below it. `0` is valid here only
-  because `src_crf = TOTX4_MEMO` excludes LULUCF, which genuinely can be negative (carbon
-  sinks).
-- **Open question:** a population value of `0` appeared during exploration, flagged as a
-  candidate data-quality issue / test case for the accuracy checks.
-- **Possible future metric:** the `XX` share per country measures how well a country's data
-  is regionalized — a completeness signal worth reporting rather than silently dropping.
+- **`src_crf=TOTX4_MEMO`** — total GHG *excluding LULUCF* (forestry), the standard headline
+  figure. LULUCF can be negative (carbon sinks), so excluding it keeps the value floor at `0`.
+- **NUTS codes aren't ISO** — Greece is `EL` (not `GR`), UK is `UK` (not `GB`).
+- **Mixed geography levels** — `demo_r_d2jan` ships country + NUTS 1/2/3 rows together;
+  cleaning keeps only length-4 NUTS 2 codes.
+- **Aggregates/residuals dropped in cleaning, not validation.** `EU28`/`EFTA` (aggregates)
+  and `*XX` (unallocated) are removed *before* validation. Reason: if `valid_geo` filtering
+  happened in cleaning, the consistency check would be tautological. So cleaning filters by
+  **structure** (`geo_level` → code length/shape); validation checks **membership**
+  (`valid_geo`). Keeping an aggregate would also stretch the accuracy range ~30× (EU28 ≈ 514M
+  vs largest region ≈ 15.9M).
+- **Emissions data was duplicated across two units** — `MIO_T` and `THS_T` (×1000 apart), so
+  every row appeared twice → broke **uniqueness** and made stats meaningless (mean/median = 48,
+  looked like skew, was really a unit gap). Fixed by adding `unit=THS_T`. Found by plotting the
+  distribution, not by reading rows. (`demo` carries only `NR` — unaffected.)
+- **Value ranges are domain-reasoned, not observed.** An observed bound can't be violated by
+  its own data (tautological check) and drifts into false positives. Lower `0` generalises
+  (nothing is negative); upper is per-dataset (persons vs kt) — which is why `value_range` is
+  a registry field, not a shared constant. Emissions floor is `0`, not the observed min (Malta
+  1,840 kt), because the data tracks emissions *falling*.
+- **Open question:** a population `0` appeared in exploration — kept as an accuracy test case.
+- **Future metric:** per-country `*XX` share = a completeness signal worth reporting.
 
 ---
 
 ## Ingestion — two paths
 
-`ingest.py` offers two ways to fetch a dataset. Both cache to `data/raw/` as Parquet and
-skip the network on a cache hit (unless `use_cache=False`).
+Both cache to `data/raw/` as Parquet; a cache hit skips the network (`use_cache=False` forces refetch).
 
 | | `fetch_dataset(code)` | `fetch_dataset_json(code, **filters)` |
 |---|---|---|
-| Source | `eurostat` package (`get_data_df`) | raw REST API + JSON-stat, parsed by hand |
-| Shape returned | **wide** (one column per year) | **long** (one row per observation) |
-| Filtering | none (whole dataset) | **server-side** via query params (`age="TOTAL"`, `geo="HU11"`, …) |
-| Cache file | `{code}.parquet` | `{code}_json{_dim=value…}.parquet` |
+| Source | `eurostat` package | raw REST API + JSON-stat, parsed by hand |
+| Shape | **wide** (year columns) | **long** (one row per obs) |
+| Filtering | none | **server-side** via query params |
+| Cache | `{code}.parquet` | `{code}_json{_dim=value…}.parquet` |
 
-```python
-from eurostat_dq.ingest import fetch_dataset, fetch_dataset_json
+- **Hand-written JSON-stat parser** — the REST response is a serialized n-dim cube
+  (`id`/`size`/`dimension` + a sparse `value` dict keyed by flat index). Parser is
+  dataset-agnostic: reads dimension order from `id`, decodes flat indices with
+  `numpy.unravel_index`. Server-side filtering is *required* — Eurostat returns HTTP 413 on
+  overly large queries.
+- **Trade-off:** caching the decoded frame drops the JSON-stat metadata (`updated` timestamp,
+  `b`/`p`/`e` status flags). Useful for timeliness/anomaly later — would need caching raw JSON.
 
-wide = fetch_dataset("demo_r_d2jan")
-long = fetch_dataset_json("demo_r_d2jan", age="TOTAL", sex="T", geo="HU11")
-```
+The canonical shape is **long**; `clean.to_tidy` (wide→long via `melt`) is the wide-path
+adapter and a no-op on already-long input, so downstream code can't tell which fetcher ran.
 
-**Why a hand-written JSON-stat parser?** The REST response is a serialized n-dimensional
-cube (`id` / `size` / `dimension` + a sparse `value` dict keyed by flat index), not rows.
-The parser is dataset-agnostic: it reads the dimension order from `id` and decodes each
-flat index with `numpy.unravel_index`, so the same code serves both datasets. Filtering
-server-side keeps the payload small — an unfiltered `demo_r_d2jan` is megabytes, while the
-sliced request is a fraction of that (and Eurostat rejects overly large queries with HTTP
-413, so filtering is required for wide dimensions).
+---
 
-**Note:** `fetch_dataset_json` caches the *decoded* DataFrame (Parquet), so the raw
-JSON-stat metadata — publication timestamp (`updated`) and per-cell status flags
-(`b` break, `p` provisional, `e` estimated) — is not retained. Those would be useful for
-the timeliness and anomaly steps later; capturing them is a possible future change
-(cache the raw JSON instead).
+## Quality dimensions
 
-## Components
+Two layers: **row-level** (pydantic, `schema.py`) — each row valid on its own — and
+**dataset-level** (great_expectations, `expectations.py`) — collection properties a single
+row can't express (e.g. uniqueness). All thresholds come from the registry.
 
-### Setup
+| Dimension | Check | Tool · location |
+|---|---|---|
+| **Accuracy** | `value` in `value_range` (per row) | pydantic · `Record.value_in_range` |
+| | `time` in plausible year range | pydantic · `Record.year_in_bounds` |
+| | `value` in `value_range` (column) | GX · `ExpectColumnValuesToBeBetween` |
+| **Completeness** | non-null `value` ≥ 90% | GX · `ExpectColumnValuesToNotBeNull` |
+| **Consistency** | `geo` in `valid_geo` (per row) | pydantic · `Record.geo_is_valid` |
+| | `geo` in `valid_geo` (column) | GX · `ExpectColumnValuesToBeInSet` |
+| | exactly one `unit` | GX · `ExpectColumnUniqueValueCountToBeBetween` |
+| **Uniqueness** | no duplicate `(geo, time)` | GX · `ExpectCompoundColumnsToBeUnique` |
+| **Timeliness** | latest `time` within `staleness_years` | plain check · `run_expectations` |
+
+`run_expectations(df, cfg)` → report dict keyed by dimension (`passed/checked/failed/failed_pct/sample_bad`).
+`validate_rows(df, cfg)` → per-row summary with `by_field` breakdown. Timeliness is hand-rolled
+(GX has no recency expectation).
+
+---
+
+## Anomaly detection
+
+Two complementary detectors (`anomaly.py`):
+
+- **Per-geo z-score** (`zscore_flags`) — standardises each value against *its own region's*
+  history: `z = (value − mean_geo) / std_geo`, flag `|z| > 3`. **Per-geo, not global** —
+  because the data is right-skewed, a global z-score would flag large regions every year (they
+  permanently sit in the tail). Per-geo asks "unusual *for this region*?" instead.
+- **IsolationForest** (`isolation_forest`, `contamination=0.02`) — fits on **year-over-year
+  `pct_change`** per geo, not the raw level. Relative change is comparable across regions
+  (a −30% drop is −30% for Malta or Germany), sidestepping the skew that raw values reintroduce.
+
+**Shared rule — insufficient history is left `NaN`, never filled with `0`.** A region's first
+year (or zero variance) can't be scored; `NaN` honestly means "unassessable", whereas `0` would
+falsely claim "normal" and (for IsolationForest) inject a fake dense cluster that distorts the
+model. These unscored rows are the **same coverage gaps flagged under completeness** (NUTS
+revisions, e.g. `HU11`/`HU12` start in 2001).
+
+**Finding — the two detectors barely overlap, by design.** z-score flags distance from a
+region's *average level*; IsolationForest flags unusual *year-to-year movement*. A region can
+drift far from its mean via smooth steps (z flags, IF doesn't) or blip one year without leaving
+its range (IF flags, z doesn't). They're two lenses, not one lens twice. Both catch a planted
+3× spike; on clean data z-score flags ~0.1%, IsolationForest ~2% (= contamination).
+
+---
+
+## Setup
 
 ```bash
 python -m venv .venv
@@ -149,51 +132,27 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
-### Usage
-
-_Not implemented yet — the CLI arrives with the reporting milestone._
-
+Usage (CLI, `report` — not yet built):
 ```bash
-# planned:
-python -m eurostat_dq.cli --dataset demo_r_d2jan
-python -m eurostat_dq.cli --dataset all
+python -m eurostat_dq.cli --dataset demo_r_d2jan   # planned
 ```
-
-### Quality dimensions
-
-_Not implemented yet._ Each of the five dimensions maps to concrete checks:
-
-| Dimension | Planned check |
-|---|---|
-| Completeness | share of non-null `value`; expected `geo × year` cells present |
-| Uniqueness | no duplicate `(geo, time)` keys |
-| Consistency | every `geo` in the dataset's `valid_geo`; single `unit` |
-| Accuracy | `value` numeric and within the registry's `value_range` |
-| Timeliness | latest `time` within the dataset's `staleness_years` |
-
-### Results
-
-_Not implemented yet._
-
----
 
 ## Status
 
 | Component | State |
 |---|---|
-| `config.py` — dataset registry | ✅ done |
-| `ingest.py` — `fetch_dataset` (package, wide) + parquet cache | ✅ done |
-| `ingest.py` — `fetch_dataset_json` (REST + JSON-stat, long) | ✅ done |
-| `clean.py` — tidy + per-dataset slice | ⬜ next |
-| `schema.py` — pydantic row validation | ⬜ |
-| `expectations.py` — 5 QA dimensions | ⬜ |
-| `anomaly.py` — z-score + IsolationForest | ⬜ |
-| `viz.py` — map + trend figures | ⬜ |
+| `config.py` — dataset registry | ✅ |
+| `ingest.py` — `fetch_dataset` (wide) + `fetch_dataset_json` (long) | ✅ |
+| `clean.py` — tidy + per-dataset slice | ✅ |
+| `schema.py` — pydantic row validation | ✅ |
+| `expectations.py` — 5 QA dimensions | ✅ |
+| `anomaly.py` — z-score + IsolationForest | ✅ |
+| `viz.py` — map + trend figures | ⬜ next |
 | `report.py` / `cli.py` | ⬜ |
+| tests + CI | ⬜ |
 
-See [PROJECT.md](PROJECT.md) for the build guide and [PROJECT_PLAN.md](PROJECT_PLAN.md) for
-milestones and issues.
+See [PROJECT.md](PROJECT.md) (build guide) and [PROJECT_PLAN.md](PROJECT_PLAN.md) (milestones/issues).
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
