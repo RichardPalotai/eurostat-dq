@@ -4,7 +4,7 @@ Ingests two Eurostat datasets, cleans them, validates them across five data-qual
 dimensions (accuracy, completeness, consistency, uniqueness, timeliness), flags anomalies,
 and reports. A learning project applying statistics to real, messy public data.
 
-**Stack:** pandas · NumPy · pydantic · great_expectations · scikit-learn · geopandas · eurostat/requests
+**Stack:** pandas · NumPy · pydantic · great_expectations · scikit-learn · geopandas · eurostat/requests · Matplotlib
 
 ---
 
