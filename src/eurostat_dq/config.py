@@ -3,6 +3,10 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 BASE_REQUEST_URL = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
+GISCO_NUTS_URL = (
+    "https://gisco-services.ec.europa.eu/distribution/v2/nuts/parquet/"
+    "NUTS_RG_20M_{year}_3035_LEVL_2.parquet"
+)
 
 @dataclass
 class DatasetConfig:

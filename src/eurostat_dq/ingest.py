@@ -1,9 +1,28 @@
 import eurostat
 import pandas as pd
 import numpy as np
-import requests, json
-from pathlib import Path
-from .config import PROJECT_ROOT, BASE_REQUEST_URL
+import geopandas as gpd
+import requests
+from .config import PROJECT_ROOT, BASE_REQUEST_URL, GISCO_NUTS_URL
+
+def fetch_nuts_geometry(year: str = "2024", *, use_cache: bool = True) -> gpd.GeoDataFrame:
+    """Fetch NUTS 2 region geometry (GISCO) as a GeoDataFrame, cached under data/reference/.
+
+    Reference data — versioned and stable — so the cached file is meant to be committed,
+    unlike the gitignored data/raw/ dataset cache. Mirrors fetch_dataset's use_cache pattern.
+    """
+    cache_path = PROJECT_ROOT / "data" / "reference" / f"nuts2_{year}_3035.parquet"
+    if use_cache and cache_path.exists():
+        print("NUTS geometry found in cache")
+        return gpd.read_parquet(cache_path)
+
+    resp = requests.get(GISCO_NUTS_URL.format(year=year), timeout=60)
+    resp.raise_for_status()
+    print("NUTS geometry acquired from the internet")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(resp.content)
+    print("NUTS geometry saved to cache")
+    return gpd.read_parquet(cache_path)
 
 def fetch_dataset(code: str, *, use_cache: bool = True) -> pd.DataFrame:
     """Fetches dataset with eurostat.get_data_df and if use_cache=True it searches the data/raw folder first before fetching from the web"""
