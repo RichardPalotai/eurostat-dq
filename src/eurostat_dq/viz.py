@@ -1,25 +1,19 @@
-from .ingest import fetch_dataset, fetch_nuts_geometry
-from .clean import to_tidy, apply_slice
+from .ingest import fetch_nuts_geometry
 from .anomaly import isolation_forest
-from .config import DATASETS, PROJECT_ROOT
+from .config import PROJECT_ROOT
 
+import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-def make_histogram(*, ENV: bool = True, DEMO: bool = True, save_png: bool = True, use_cache: bool = True) -> dict: #filterable for GHG or/and Population
-    if (not ENV and not DEMO):
-        return None
-
+def make_histogram(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dict:
     figs = {}
 
-    if (DEMO):
-        raw   = fetch_dataset("demo_r_d2jan", use_cache=use_cache)
-        tidy  = to_tidy(raw)
-        demo = apply_slice(tidy, DATASETS["demo_r_d2jan"])
+    if (code == "demo_r_d2jan"):
 
         fig, ax = plt.subplots(figsize=(8, 4))
-        (demo["value"] / 1e6).hist(bins=50, ax=ax)
+        (df["value"] / 1e6).hist(bins=50, ax=ax)
         ax.set_title("Population per NUTS 2 region")
         ax.set_xlabel("Population (millions of persons)")
         ax.set_ylabel("Number of region-years")
@@ -27,15 +21,12 @@ def make_histogram(*, ENV: bool = True, DEMO: bool = True, save_png: bool = True
 
         if (save_png):
             _save(fig, "EU_DEMO_hist.png")
-        figs["DEMO"] = fig
+        figs["EU_DEMO_hist"] = fig
 
-    if (ENV):
-        raw   = fetch_dataset("env_air_gge", use_cache=use_cache)
-        tidy  = to_tidy(raw)
-        env = apply_slice(tidy, DATASETS["env_air_gge"])
+    if (code == "env_air_gge"):
 
         fig, ax = plt.subplots(figsize=(8, 4))
-        (env["value"] / 1e3).hist(bins=50, ax=ax)
+        (df["value"] / 1e3).hist(bins=50, ax=ax)
         ax.set_title("GHG emissions per country")
         ax.set_xlabel("Emissions (Mt CO₂-eq)")
         ax.set_ylabel("Number of country-years")
@@ -43,84 +34,63 @@ def make_histogram(*, ENV: bool = True, DEMO: bool = True, save_png: bool = True
         
         if (save_png):
             _save(fig, "EU_ENV_hist.png")
-        figs["ENV"] = fig
+        figs["EU_ENV_hist"] = fig
 
     return figs
 
-
-def make_boxplot(HU: bool, *, EU_ENV: bool = True, EU_DEMO: bool = True, save_png: bool = True, use_cache: bool = True) -> dict: # filterable for the whole EU or only HU
+def make_boxplot(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dict:
     figs = {}
 
-    if (HU):
-        raw   = fetch_dataset("demo_r_d2jan", use_cache=use_cache)
-        tidy  = to_tidy(raw)
-        clean = apply_slice(tidy, DATASETS["demo_r_d2jan"])
+    if (code == "demo_r_d2jan"):
+        fig_HU, ax_HU = plt.subplots(figsize=(16, 6))
+        demo_hu = df[df.geo.str.startswith("HU")]
+        demo_plot_HU = demo_hu.assign(value=demo_hu["value"] / 1e6)
+        demo_plot_HU.boxplot(column="value", by="time", ax=ax_HU)
+        ax_HU.set_title("Hungarian population yearly (1990-2025)")
+        ax_HU.set_ylabel("Population (millions of persons)")
+        ax_HU.set_xlabel("Year")
+        ax_HU.set_xticklabels(ax_HU.get_xticklabels(), rotation=90)
+        fig_HU.suptitle("")
+        fig_HU.tight_layout()
 
-        fig, ax = plt.subplots(figsize=(16, 6))
-        demo_hu = clean[clean.geo.str.startswith("HU")]
-        demo_plot = demo_hu.assign(value=demo_hu["value"] / 1e6)
-        demo_plot.boxplot(column="value", by="time", ax=ax)
-        ax.set_title("Hungarian population yearly (1990-2025)")
-        ax.set_ylabel("Population (millions of persons)")
-        ax.set_xlabel("Year")
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
-        fig.suptitle("")
-        fig.tight_layout()
+        fig_EU, ax_EU = plt.subplots(figsize=(16, 6))
+        demo_plot_eu = df.assign(value=df["value"] / 1e6)
+        demo_plot_eu.boxplot(column="value", by="time", ax=ax_EU)
+        ax_EU.set_title("Demographics of the EU")
+        ax_EU.set_ylabel("Population (millions of persons)")
+        ax_EU.set_xlabel("Year")
+        ax_EU.set_xticklabels(ax_EU.get_xticklabels(), rotation=90)
+        fig_EU.suptitle("")
+        fig_EU.tight_layout()
 
         if (save_png):
-            _save(fig, "HUN_DEMO_boxplot.png")
-        figs["HU_DEMO"] = fig
-    else:
-        if (not EU_ENV and not EU_DEMO):
-            return None
+            _save(fig_HU, "HUN_DEMO_boxplot.png")
+            _save(fig_EU, "EU_DEMO_boxplot.png")
+        figs["HUN_DEMO_boxplot"] = fig_HU
+        figs["EU_DEMO_boxplot"] = fig_EU
 
-        if (EU_DEMO):
-            raw   = fetch_dataset("demo_r_d2jan", use_cache=use_cache)
-            tidy  = to_tidy(raw)
-            demo = apply_slice(tidy, DATASETS["demo_r_d2jan"])
+    if (code == "env_air_gge"):
+        fig_EU, ax_EU = plt.subplots(figsize=(16, 6))
+        env_plot_eu = df.assign(value=df["value"] / 1e3)
+        env_plot_eu.boxplot(column="value", by="time", ax=ax_EU)
+        ax_EU.set_title("GHG emissions of the EU")
+        ax_EU.set_ylabel("Emissions (Mt CO₂-eq)")
+        ax_EU.set_xlabel("Year")
+        ax_EU.set_xticklabels(ax_EU.get_xticklabels(), rotation=90)
+        fig_EU.suptitle("")
+        fig_EU.tight_layout()
 
-            fig, ax = plt.subplots(figsize=(16, 6))
-            demo_plot_eu = demo.assign(value=demo["value"] / 1e6)
-            demo_plot_eu.boxplot(column="value", by="time", ax=ax)
-            ax.set_title("Demographics of the EU")
-            ax.set_ylabel("Population (millions of persons)")
-            ax.set_xlabel("Year")
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
-            fig.suptitle("")
-            fig.tight_layout()
-
-            if (save_png):
-                _save(fig, "EU_DEMO_boxplot.png")
-            figs["EU_DEMO"] = fig
-
-        if (EU_ENV):
-            raw   = fetch_dataset("env_air_gge", use_cache=use_cache)
-            tidy  = to_tidy(raw)
-            env = apply_slice(tidy, DATASETS["env_air_gge"])
-
-            fig, ax = plt.subplots(figsize=(16, 6))
-            env_plot_eu = env.assign(value=env["value"] / 1e3)
-            env_plot_eu.boxplot(column="value", by="time", ax=ax)
-            ax.set_title("GHG emissions of the EU")
-            ax.set_ylabel("Emissions (Mt CO₂-eq)")
-            ax.set_xlabel("Year")
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
-            fig.suptitle("")
-            fig.tight_layout()
-
-            if (save_png):
-                _save(fig, "EU_ENV_boxplot.png")
-            figs["EU_ENV"] = fig
+        if (save_png):
+            _save(fig_EU, "EU_ENV_boxplot.png")
+        figs["EU_ENV_boxplot"] = fig_EU
 
     return figs
 
-def make_hun_line_diagram(*, ENV: bool = True, DEMO: bool = True, use_cache: bool = True, save_png: bool = True) -> dict:
+def make_hun_line_diagram(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dict:
     figs = {}
 
-    if DEMO:
-        raw = fetch_dataset("demo_r_d2jan", use_cache=use_cache)
-        demo_hu = apply_slice(to_tidy(raw), DATASETS["demo_r_d2jan"])
-        demo_hu = demo_hu[demo_hu.geo.str.startswith("HU")]
+    if (code == "demo_r_d2jan"):
+        demo_hu = df[df.geo.str.startswith("HU")]
 
         fig, ax = plt.subplots(figsize=(11, 6))
         wide = demo_hu.pivot(index="time", columns="geo", values="value") / 1e6
@@ -135,12 +105,10 @@ def make_hun_line_diagram(*, ENV: bool = True, DEMO: bool = True, use_cache: boo
 
         if save_png:
             _save(fig, "HUN_DEMO_line_diagram.png")
-        figs["DEMO"] = fig
+        figs["HUN_DEMO_line_diagram"] = fig
 
-    if ENV:
-        raw = fetch_dataset("env_air_gge", use_cache=use_cache)
-        env = apply_slice(to_tidy(raw), DATASETS["env_air_gge"])
-        env = env[env.geo == "HU"].sort_values("time")
+    if (code == "env_air_gge"):
+        env = df[df.geo == "HU"].sort_values("time")
 
         fig, ax = plt.subplots(figsize=(11, 6))
         ax.plot(env["time"], env["value"], marker="o")
@@ -150,19 +118,17 @@ def make_hun_line_diagram(*, ENV: bool = True, DEMO: bool = True, use_cache: boo
 
         if save_png:
             _save(fig, "HUN_ENV_line_diagram.png")
-        figs["ENV"] = fig
+        figs["HUN_ENV_line_diagram"] = fig
 
     return figs
 
-def make_choropleth_demo(*, year: str = "2024", save_png: bool = True, use_cache: bool = True):
-    nuts = fetch_nuts_geometry(year=year, use_cache=use_cache)
+def make_choropleth_demo(df: pd.DataFrame, nuts_geo_df: gpd.GeoDataFrame, code: str, *, year: str, save_png: bool = True) -> dict:
+    """MUST FETCH THE SAME YEAR AS fetch_nuts_geometry() FUNCTION!!!!!"""
+    if (code != "demo_r_d2jan"):
+        return {}
 
-    print("FETCH:")
-    raw   = fetch_dataset("demo_r_d2jan", use_cache=use_cache)
-    clean = apply_slice(to_tidy(raw), DATASETS["demo_r_d2jan"])
-
-    year_df = clean[clean["time"] == int(year)]
-    gdf = nuts.merge(year_df, left_on="NUTS_ID", right_on="geo", how="left")
+    year_df = df[df["time"] == int(year)]
+    gdf = nuts_geo_df.merge(year_df, left_on="NUTS_ID", right_on="geo", how="left")
 
     gdf["pop_m"] = gdf["value"] / 1e6
 
@@ -192,13 +158,13 @@ def make_choropleth_demo(*, year: str = "2024", save_png: bool = True, use_cache
     if (save_png):
         _save(fig, f"demo_choropleth_{year}.png")
 
-    return fig
+    return {f"demo_choropleth_{year}" : fig}
 
-def make_trend_lines_env(*, save_png: bool = True, use_cache: bool = True):
-    print("FETCH:")
-    raw   = fetch_dataset("env_air_gge", use_cache=use_cache)
-    clean = apply_slice(to_tidy(raw), DATASETS["env_air_gge"])
-    env_anomaly_iso = isolation_forest(clean)
+def make_trend_lines_env(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dict:
+    if (code != "env_air_gge"):
+        return {}
+    
+    env_anomaly_iso = isolation_forest(df)
 
     w = env_anomaly_iso.pivot(index="time", columns="geo", values="value")
     idx = w / w.iloc[0] * 100 # Normalize data so the first row becomes 100% and all the other rows show relative percentage changes.
@@ -228,9 +194,13 @@ def make_trend_lines_env(*, save_png: bool = True, use_cache: bool = True):
     if (save_png):
         _save(fig, "env_trend_lines.png")
 
-    return fig
+    return {"env_trend_lines" : fig}
 
 def _save(fig, filename):
     path = PROJECT_ROOT / "reports" / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=150, bbox_inches="tight")
+
+def generate_visuals(df: pd.DataFrame, code: str, *, use_cache: bool, choropleth_year: str = "2024") -> dict:
+    geo_df = fetch_nuts_geometry(year=choropleth_year, use_cache=use_cache)
+    return make_histogram(df, code) | make_boxplot(df, code) | make_hun_line_diagram(df, code) | make_choropleth_demo(df, geo_df, code, year=choropleth_year) | make_trend_lines_env(df, code)

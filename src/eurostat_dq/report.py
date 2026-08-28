@@ -1,8 +1,6 @@
 import base64
 import pandas as pd
 from datetime import datetime
-from .ingest import fetch_dataset
-from .clean import to_tidy, apply_slice
 from .schema import validate_rows
 from .expectations import run_expectations
 from .anomaly import zscore_flags, isolation_forest
@@ -41,19 +39,19 @@ figcaption { font-weight:700; color:var(--accent); margin-top:.6rem; font-size:1
 .commentary { margin:.4rem 0 0; }
 """
 
-# Figures to embed, in order. `commentary` is a starting point — edit it to add
-# your own analysis; each becomes a paragraph under its figure.
 FIGURES = [
     {
         "file": "EU_DEMO_hist.png",
+        "code": "demo_r_d2jan",
         "title": "Population distribution across NUTS 2 regions",
         "commentary": (
-            "The distribution is strongly right-skewed — most regions cluster at 1–2 "
+            "The distribution is strongly right-skewed — most regions cluster at 1-2 "
             "million, with a long thin tail of larger regions."
         ),
     },
     {
         "file": "EU_ENV_hist.png",
+        "code": "env_air_gge",
         "title": "GHG emissions distribution across countries",
         "commentary": (
             "Emissions span a ~600× range (Malta to Germany), so the distribution is "
@@ -62,6 +60,7 @@ FIGURES = [
     },
     {
         "file": "EU_DEMO_boxplot.png",
+        "code": "demo_r_d2jan",
         "title": "Population distribution by year (EU)",
         "commentary": (
             "The box (typical region) stays stable while the upper tail rises — growth is "
@@ -70,6 +69,7 @@ FIGURES = [
     },
     {
         "file": "EU_ENV_boxplot.png",
+        "code": "env_air_gge",
         "title": "GHG emissions distribution by year (EU)",
         "commentary": (
             "The whole distribution drifts downward over time — a broad EU-wide decline in "
@@ -78,24 +78,27 @@ FIGURES = [
     },
     {
         "file": "demo_choropleth_2024.png",
+        "code": "demo_r_d2jan",
         "title": "Population by NUTS 2 region (2024)",
         "commentary": (
-            "Population is strongly concentrated: most NUTS 2 regions hold 1–2 million "
+            "Population is strongly concentrated: most NUTS 2 regions hold 1-2 million "
             "people, while a handful (Île-de-France, Istanbul, Madrid, Lombardy) exceed "
             "5 million. Grey regions had no matching data for 2024. "
         ),
     },
     {
         "file": "env_trend_lines.png",
+        "code": "env_air_gge",
         "title": "GHG emissions relative to 1990",
         "commentary": (
             "Indexed to 1990 = 100%, most countries have cut emissions substantially "
-            "(Estonia −75%, Latvia −63%), while a few rose (Turkey +155%). Red markers "
+            "(Estonia -75%, Latvia -63%), while a few rose (Turkey +155%). Red markers "
             "flag year-over-year anomalies from the IsolationForest detector. "
         ),
     },
     {
         "file": "HUN_DEMO_boxplot.png",
+        "code": "demo_r_d2jan",
         "title": "Hungarian population distribution by year",
         "commentary": (
             "Across Hungary's 8 NUTS 2 regions, the spread widens over time as Budapest "
@@ -104,6 +107,7 @@ FIGURES = [
     },
     {
         "file": "HUN_DEMO_line_diagram.png",
+        "code": "demo_r_d2jan",
         "title": "Hungarian regions: population over time",
         "commentary": (
             "Only Pest (HU12) grows (+25%); Budapest is roughly flat and the other regions "
@@ -112,6 +116,7 @@ FIGURES = [
     },
     {
         "file": "HUN_ENV_line_diagram.png",
+        "code": "env_air_gge",
         "title": "Hungary: GHG emissions over time",
         "commentary": (
             "Hungary's emissions fell ~43% from 1990, with visible steps around 2009 and "
@@ -130,18 +135,19 @@ def _img_data_uri(filename: str) -> str | None:
     return f"data:image/png;base64,{b64}"
 
 
-def _figures_section() -> str:
+def _figures_section(codes: list[str]) -> str:
     blocks = []
     for f in FIGURES:
-        uri = _img_data_uri(f["file"])
-        img = (f'<img src="{uri}" alt="{f["title"]}">' if uri
-               else f'<p class="commentary"><i>{f["file"]} not generated yet — run the viz step.</i></p>')
-        blocks.append(f"""
-      <figure>
-        {img}
-        <figcaption>{f['title']}</figcaption>
-        <p class="commentary">{f['commentary']}</p>
-      </figure>""")
+        if f["code"] in codes:
+            uri = _img_data_uri(f["file"])
+            img = (f'<img src="{uri}" alt="{f["title"]}">' if uri
+                else f'<p class="commentary"><i>{f["file"]} not generated yet — run the viz step.</i></p>')
+            blocks.append(f"""
+        <figure>
+            {img}
+            <figcaption>{f['title']}</figcaption>
+            <p class="commentary">{f['commentary']}</p>
+        </figure>""")
     return f"""
     <section>
       <h2>Visualizations</h2>{"".join(blocks)}
@@ -153,9 +159,10 @@ def _badge(passed: bool) -> str:
     return f'<span class="badge {cls}">{txt}</span>'
 
 
-def _dataset_section(code: str, cfg, *, use_cache: bool) -> str:
-    clean = apply_slice(to_tidy(fetch_dataset(code, use_cache=use_cache)), cfg)
-    qa = run_expectations(clean, cfg)
+def _dataset_section(df: pd.DataFrame, code: str) -> str:
+    cfg = DATASETS[code]
+
+    qa = run_expectations(df, cfg)
 
     overall = all(res["passed"] for checks in qa.values() for res in checks.values())
 
@@ -168,12 +175,12 @@ def _dataset_section(code: str, cfg, *, use_cache: bool) -> str:
     summary["passed"] = summary["passed"].map(_badge)
     dim_html = summary.fillna("—").to_html(index=False, escape=False, classes="dq", border=0)
 
-    adf = isolation_forest(zscore_flags(clean))
+    adf = isolation_forest(zscore_flags(df))
     flagged = (adf[adf["z_anomaly"] | adf["if_anomaly"]]
                .sort_values("if_score")[["geo", "time", "value", "z", "if_score"]])
     flagged_html = flagged.round(3).fillna("—").to_html(index=False, classes="dq", border=0)
 
-    val = validate_rows(clean, cfg)
+    val = validate_rows(df, cfg)
     summary_html = pd.DataFrame([val[2]]).to_html(index=False, classes="dq", border=0)
     err_clean = [{"row": err["row"], "errors": [d["msg"] for d in err["errors"]]} for err in val[1]]
     err_html = pd.DataFrame(err_clean).to_html(index=False, classes="dq", border=0)
@@ -192,10 +199,10 @@ def _dataset_section(code: str, cfg, *, use_cache: bool) -> str:
     </section>"""
 
 
-def write_report(*, use_cache: bool = True) -> None:
+def write_report(dfs: dict[str, pd.DataFrame]) -> None:
     sections = "".join(
-        _dataset_section(code, cfg, use_cache=use_cache)
-        for code, cfg in DATASETS.items()
+        _dataset_section(df, code)
+        for code, df in dfs.items()
     )
 
     html = f"""<!doctype html>
@@ -204,14 +211,14 @@ def write_report(*, use_cache: bool = True) -> None:
 <body><main>
   <header>
     <h1>Eurostat Data-Quality Report</h1>
-    <p class="meta">Generated {datetime.now():%Y-%m-%d %H:%M} · {len(DATASETS)} dataset(s) · Source: Eurostat</p>
+    <p class="meta">Generated {datetime.now():%Y-%m-%d %H:%M} · {len(list(dfs.keys()))} dataset(s) · Source: Eurostat</p>
   </header>
   <p class="legend">
     <b>—</b> in a dimension row: the check reports a value, not a per-row failure count (see <i>passed</i>).<br>
     <b>if_score —</b> in a flagged row: first year, no year-over-year change to score — flagged by z-score instead.
   </p>
   {sections}
-  {_figures_section()}
+  {_figures_section(list(dfs.keys()))}
 </main></body></html>"""
 
     (PROJECT_ROOT / "reports" / "quality_report.html").write_text(html)
