@@ -6,8 +6,6 @@ __pycache__/
 
 *.ipynb_checkpoints/
 
-PROJECT_PLAN.md
-PROJECT.md
 setup_github.sh
 
 .DS_Store
