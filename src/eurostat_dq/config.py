@@ -10,6 +10,26 @@ GISCO_NUTS_URL = (
 
 @dataclass
 class DatasetConfig:
+    """Everything the pipeline needs to know about one dataset — the "dataset registry" entry.
+
+    Holding these per-dataset facts as data (not code) is what lets the same
+    ingest/clean/validate/report logic serve any dataset; adding one is a new ``DATASETS``
+    entry, nothing more.
+
+    Attributes:
+        code: The Eurostat dataset code (e.g. ``"demo_r_d2jan"``).
+        filters: Dimensions to collapse to a single value in cleaning
+            (``{column: keep_value}``, e.g. ``{"age": "TOTAL", "sex": "T"}``).
+        valid_geo: The exact set of accepted ``geo`` codes — used by *validation* (the
+            consistency check), not by cleaning.
+        value_range: ``(min, max)`` plausible value bound for the accuracy check.
+            Domain-reasoned, not observed.
+        geo_level: ``"nuts2"`` or ``"country"`` — the structural rule cleaning uses to keep
+            the right shape of ``geo`` code.
+        staleness_years: How many years behind the current year the latest data may be before
+            the timeliness check fails.
+    """
+
     code: str
     filters: dict[str, str]
     valid_geo: set

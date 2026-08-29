@@ -8,7 +8,8 @@ from .config import DATASETS, PROJECT_ROOT
 
 CSS = """
 :root { --ink:#1f2933; --muted:#617080; --line:#e4e9f0; --bg:#f7f9fc;
-        --pass:#1a7f47; --pass-bg:#e4f5ea; --fail:#b42318; --fail-bg:#fdecea; --accent:#2a4d69; }
+        --pass:#1a7f47; --pass-bg:#e4f5ea; --fail:#b42318; --fail-bg:#fdecea;
+        --warn:#c2410c; --warn-bg:#fff2e6; --accent:#2a4d69; }
 * { box-sizing:border-box; }
 body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
        color:var(--ink); background:var(--bg); margin:0; padding:2rem 1rem; line-height:1.5; }
@@ -28,6 +29,7 @@ table.dq tr:nth-child(even) td { background:#fafcff; }
 .badge { display:inline-block; padding:.1rem .55rem; border-radius:999px; font-size:.78rem; font-weight:700; }
 .badge.pass { color:var(--pass); background:var(--pass-bg); }
 .badge.fail { color:var(--fail); background:var(--fail-bg); }
+.count.warn { color:var(--warn); background:var(--warn-bg); }
 .count { display:inline-block; background:var(--fail-bg); color:var(--fail); border-radius:999px;
          padding:.05rem .5rem; font-size:.8rem; font-weight:700; }
 .scroll { max-height:340px; overflow:auto; border:1px solid var(--line); border-radius:6px; }
@@ -190,7 +192,7 @@ def _dataset_section(df: pd.DataFrame, code: str) -> str:
       <h2><span class="dataset">{code}</span> &nbsp; {_badge(overall)}</h2>
       <h3>Quality dimensions</h3>
       {dim_html}
-      <h3>Flagged rows <span class="count">{len(flagged)}</span></h3>
+      <h3>Flagged rows <span class="count warn">{len(flagged)}</span></h3>
       <div class="scroll">{flagged_html}</div>
       <h3>Failed rows <span class="count">{val[2]["failed"]}</span></h3>
       <b>Summary</b>
@@ -200,6 +202,16 @@ def _dataset_section(df: pd.DataFrame, code: str) -> str:
 
 
 def write_report(dfs: dict[str, pd.DataFrame]) -> None:
+    """Write the self-contained HTML quality report to ``reports/quality_report.html``.
+
+    For each dataset: runs validation and both anomaly detectors, and renders a section with
+    a PASS/FAIL badge per quality dimension, tables of flagged and failed rows, then the
+    matching figures (read from ``reports/`` and inlined as base64, so the file is
+    standalone). Works for any number of datasets.
+
+    Args:
+        dfs: Mapping of dataset code → its cleaned long frame (as produced by the pipeline).
+    """
     sections = "".join(
         _dataset_section(df, code)
         for code, df in dfs.items()

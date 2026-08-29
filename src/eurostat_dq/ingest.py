@@ -25,7 +25,20 @@ def fetch_nuts_geometry(year: str = "2024", *, use_cache: bool = True) -> gpd.Ge
     return gpd.read_parquet(cache_path)
 
 def fetch_dataset(code: str, *, use_cache: bool = True) -> pd.DataFrame:
-    """Fetches dataset with eurostat.get_data_df and if use_cache=True it searches the data/raw folder first before fetching from the web"""
+    """Fetch a full Eurostat dataset via the ``eurostat`` package, cached as Parquet.
+
+    Returns the dataset in **wide** form (one column per year), as the package delivers it —
+    run it through :func:`~eurostat_dq.clean.to_tidy` to reshape. The raw pull is cached to
+    ``data/raw/{code}.parquet``; subsequent calls read the cache.
+
+    Args:
+        code: A Eurostat dataset code, e.g. ``"demo_r_d2jan"``.
+        use_cache: If ``True`` (default), return the cached file when present. If ``False``,
+            re-fetch from the API and overwrite the cache.
+
+    Returns:
+        The dataset as a wide DataFrame.
+    """
     cache_path = PROJECT_ROOT / "data" / "raw" / f"{code}.parquet"
     if (use_cache and cache_path.exists()):
         print("DataFrame found in cache")
@@ -39,10 +52,26 @@ def fetch_dataset(code: str, *, use_cache: bool = True) -> pd.DataFrame:
         return df
     
 def fetch_dataset_json(code: str, *, use_cache: bool = True, **filters) -> pd.DataFrame:
-    """Fetches dataset with JSON-stat to flat dataset converter and if use_cache=True it searches the data/raw folder first before fetching from the web.
+    """Fetch a Eurostat dataset via the raw REST/JSON-stat API and decode it to a DataFrame.
 
-    Pass filters as keyword arguments, e.g. fetch_dataset_json("demo_r_d2jan", age="TOTAL", geo="HU11").
-    (format and lang are given)"""
+    An alternative to :func:`fetch_dataset` that parses Eurostat's JSON-stat cube by hand
+    (dataset-agnostic: dimension order from ``id``, flat indices via ``numpy.unravel_index``).
+    Returns **long** form (one row per observation). Filtering happens server-side, which is
+    required in practice — an unfiltered wide dimension triggers HTTP 413.
+
+    Pass filters as keyword arguments; ``format`` and ``lang`` are added automatically::
+
+        fetch_dataset_json("demo_r_d2jan", age="TOTAL", sex="T", geo="HU11")
+
+    Args:
+        code: A Eurostat dataset code.
+        use_cache: If ``True`` (default), read the cached slice when present; if ``False``,
+            re-fetch. The cache key includes the filters, so different slices cache separately.
+        **filters: Dimension filters (e.g. ``age="TOTAL"``); values may be lists for multiple.
+
+    Returns:
+        The requested slice as a long DataFrame.
+    """
 
     def _fmt(v):
         return "+".join(map(str, v)) if isinstance(v, (list, tuple)) else str(v)

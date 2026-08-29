@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 def make_histogram(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dict:
+    """Value-distribution histogram for the given dataset (population or emissions).
+
+    Returns a dict of the figure(s) produced for ``code``, or ``{}`` if none apply. Saves a
+    PNG to ``reports/`` when ``save_png`` is True.
+    """
     figs = {}
 
     if (code == "demo_r_d2jan"):
@@ -39,6 +44,10 @@ def make_histogram(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dic
     return figs
 
 def make_boxplot(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dict:
+    """Distribution-by-year boxplots (EU-wide, plus Hungary for the population dataset).
+
+    Returns a dict of the figures produced for ``code``, or ``{}`` if none apply.
+    """
     figs = {}
 
     if (code == "demo_r_d2jan"):
@@ -87,6 +96,10 @@ def make_boxplot(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dict:
     return figs
 
 def make_hun_line_diagram(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dict:
+    """Hungary time-series: population per NUTS 2 region, or national emissions.
+
+    Returns a dict of the figure produced for ``code``, or ``{}`` if none apply.
+    """
     figs = {}
 
     if (code == "demo_r_d2jan"):
@@ -123,7 +136,19 @@ def make_hun_line_diagram(df: pd.DataFrame, code: str, *, save_png: bool = True)
     return figs
 
 def make_choropleth_demo(df: pd.DataFrame, nuts_geo_df: gpd.GeoDataFrame, code: str, *, year: str, save_png: bool = True) -> dict:
-    """MUST FETCH THE SAME YEAR AS fetch_nuts_geometry() FUNCTION!!!!!"""
+    """Choropleth of population by NUTS 2 region for one year.
+
+    Applies to ``demo_r_d2jan`` only; returns ``{}`` for any other dataset. Regions with no
+    matching data are drawn grey.
+
+    Important:
+        ``nuts_geo_df`` must be the geometry for the **same** ``year`` (from
+        :func:`~eurostat_dq.ingest.fetch_nuts_geometry`) — NUTS boundaries are re-classified
+        over time, so a mismatched version leaves regions unmatched.
+
+    Returns:
+        ``{"demo_choropleth_{year}": Figure}`` for the population dataset, else ``{}``.
+    """
     if (code != "demo_r_d2jan"):
         return {}
 
@@ -149,7 +174,7 @@ def make_choropleth_demo(df: pd.DataFrame, nuts_geo_df: gpd.GeoDataFrame, code: 
         ax = ax
     )
 
-    ax.set_title("Population by NUTS 2 region, 2024")
+    ax.set_title(f"Population by NUTS 2 region, {year}")
     fig.text(0.5, 0.02, "Source: Eurostat (demo_r_d2jan); boundaries © EuroGeographics (GISCO).", ha="center", va="bottom")
     ax.set_xlim(2.4e6, 6.0e6)
     ax.set_ylim(1.3e6, 5.5e6)
@@ -161,6 +186,10 @@ def make_choropleth_demo(df: pd.DataFrame, nuts_geo_df: gpd.GeoDataFrame, code: 
     return {f"demo_choropleth_{year}" : fig}
 
 def make_trend_lines_env(df: pd.DataFrame, code: str, *, save_png: bool = True) -> dict:
+    """Emissions indexed to 1990 = 100%, with IsolationForest anomalies annotated.
+
+    Applies to ``env_air_gge`` only; returns ``{}`` for any other dataset.
+    """
     if (code != "env_air_gge"):
         return {}
     
@@ -202,5 +231,20 @@ def _save(fig, filename):
     fig.savefig(path, dpi=150, bbox_inches="tight")
 
 def generate_visuals(df: pd.DataFrame, code: str, *, use_cache: bool, choropleth_year: str = "2024") -> dict:
+    """Build and save every figure applicable to ``code``, returning them keyed by name.
+
+    Runs all ``make_*`` functions and merges their results; each function produces figures
+    only for the dataset it applies to (the others contribute nothing), so the same call
+    works for any dataset. Figures are saved to ``reports/`` as a side effect.
+
+    Args:
+        df: The cleaned long frame for ``code``.
+        code: The dataset code, used to select which figures apply.
+        use_cache: Passed to :func:`~eurostat_dq.ingest.fetch_nuts_geometry` for the map.
+        choropleth_year: Year to map, and the matching NUTS geometry version. Defaults to "2024".
+
+    Returns:
+        A dict of ``{figure_name: matplotlib Figure}`` for every figure produced.
+    """
     geo_df = fetch_nuts_geometry(year=choropleth_year, use_cache=use_cache)
     return make_histogram(df, code) | make_boxplot(df, code) | make_hun_line_diagram(df, code) | make_choropleth_demo(df, geo_df, code, year=choropleth_year) | make_trend_lines_env(df, code)

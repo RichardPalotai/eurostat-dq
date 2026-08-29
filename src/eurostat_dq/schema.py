@@ -7,6 +7,18 @@ from collections import Counter
 MIN_YEAR = 1990
 
 class Record(BaseModel):
+    """One validated Eurostat observation — the row-level half of the quality layer.
+
+    Enforces per-row accuracy and consistency: ``value`` within the dataset's range,
+    ``time`` a plausible year, and ``geo`` in the dataset's valid set. A ``None`` value is
+    allowed (a known gap, not a failure). The dataset-specific bounds are injected at call
+    time via validation context — pass the config as ``context``::
+
+        Record.model_validate(row, context=cfg)
+
+    so the same model validates any dataset. Use :func:`validate_rows` to run it over a frame.
+    """
+
     geo: str
     time: int
     value: float | None
@@ -34,7 +46,24 @@ class Record(BaseModel):
             raise ValueError(f"geo {v} is not valid")
         return v
 
-def validate_rows(df: DataFrame, cfg: DatasetConfig):
+def validate_rows(df: DataFrame, cfg: DatasetConfig) -> tuple[list, list, dict]:
+    """Validate every row of a frame against :class:`Record`, collecting failures instead of raising.
+
+    Each row is checked with the dataset's config injected as context. Rows that fail are
+    recorded (with their structured errors) rather than aborting the run.
+
+    Args:
+        df: A cleaned long frame with ``geo``, ``time`` and ``value`` columns.
+        cfg: The dataset's registry entry, passed to each ``Record`` as validation context.
+
+    Returns:
+        A ``(valid, errors, summary)`` tuple:
+
+        * ``valid`` — list of validated ``Record`` objects.
+        * ``errors`` — list of ``{"row": index, "errors": [...]}`` for each failing row.
+        * ``summary`` — ``{"total", "passed", "failed", "by_field"}``, where ``by_field``
+          counts failures per field (e.g. ``{"geo": 3, "value": 1}``).
+    """
     valid, errors = [], []
     for i, row in enumerate(df.to_dict("records")):
         try:

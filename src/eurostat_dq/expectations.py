@@ -12,7 +12,24 @@ DIMENSION = {
     "expect_column_values_to_be_between":             "accuracy",
 }
 
-def run_expectations(df: pd.DataFrame, cfg: DatasetConfig) -> dict[dict[dict]]:
+def run_expectations(df: pd.DataFrame, cfg: DatasetConfig) -> dict:
+    """Run the dataset-level quality checks and return a report keyed by quality dimension.
+
+    Builds a great_expectations suite covering uniqueness, completeness, consistency and
+    accuracy (all thresholds from the registry), plus a hand-rolled timeliness check
+    (great_expectations has no recency expectation). Each expectation is mapped to one of the
+    five dimensions via ``DIMENSION``.
+
+    Args:
+        df: A cleaned long frame for a single dataset.
+        cfg: The dataset's registry entry (supplies ``value_range``, ``valid_geo``,
+            ``staleness_years``).
+
+    Returns:
+        A dict keyed by dimension → check name → result, where each result holds
+        ``passed``/``checked``/``failed``/``failed_pct``/``sample_bad`` (or, for timeliness,
+        ``passed``/``latest``/``age``/``threshold``). JSON-serialisable, ready for the report.
+    """
     context = gx.get_context()
     context.variables.progress_bars = ProgressBarsConfig(metric_calculations=False)
 

@@ -22,6 +22,12 @@ def run_pipeline(dataset: str, *, use_cache: bool) -> None:
 
 
 def main() -> None:
+    """Command-line entry point: parse ``--dataset``/``--no-cache`` and run the pipeline.
+
+    Installed as the ``eurostat-dq`` console script (see ``[project.scripts]``); also runnable
+    as ``python -m eurostat_dq.cli``. Errors from the pipeline are reported as a clean message
+    with a non-zero exit code rather than a traceback.
+    """
     parser = argparse.ArgumentParser(
         prog="eurostat-dq",
         description="Eurostat data-quality pipeline: ingest, validate, flag anomalies, report.",

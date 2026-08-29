@@ -129,22 +129,43 @@ its range (IF flags, z doesn't). They're two lenses, not one lens twice. Both ca
 
 ## Setup
 
+Requires **Python 3.11+**.
+
 ```bash
+git clone https://github.com/RichardPalotai/eurostat-dq.git
+cd eurostat-dq
+
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+
+pip install -e ".[dev]"            # installs the package + the `eurostat-dq` command
 ```
+
+All dependencies (including `geopandas`) are pure `pip` wheels — no system packages needed.
+The first `eurostat-dq` run downloads the datasets and NUTS geometry from the Eurostat/GISCO
+APIs (needs a network connection) and caches them locally; later runs are offline.
 
 ## Usage
 
-Run the whole pipeline (ingest → clean → validate → anomaly → figures → report) from the CLI:
+The install registers an **`eurostat-dq`** command that runs the whole pipeline
+(ingest → clean → validate → anomaly → figures → report):
 
 ```bash
-python -m eurostat_dq.cli                       # all datasets (uses the local cache)
-python -m eurostat_dq.cli --dataset demo_r_d2jan   # a single dataset
-python -m eurostat_dq.cli --no-cache            # force a fresh fetch from the API
-python -m eurostat_dq.cli --help                # options
+eurostat-dq                          # all datasets (uses the local cache)
+eurostat-dq --dataset demo_r_d2jan   # a single dataset (choices: demo_r_d2jan, env_air_gge, all)
+eurostat-dq --no-cache               # force a fresh fetch from the API instead of the cache
+eurostat-dq --help                   # full options
 ```
+
+Equivalent without the console script: `python -m eurostat_dq.cli …` (same flags).
+
+Notes:
+
+- **Default is `--dataset all` and cache-on** — a bare `eurostat-dq` reuses cached data and
+  processes both datasets. Pass `--no-cache` to re-download.
+- **Invalid input fails cleanly** — an unknown `--dataset` is rejected by argparse with a
+  usage message; a pipeline error (e.g. no network) prints `error: …` and exits non-zero,
+  not a traceback.
 
 Output lands in `reports/`: the figures as PNGs and a self-contained
 `quality_report.html` (all figures inlined as base64, so it opens anywhere with no

@@ -2,7 +2,8 @@
 <html lang="en"><head><meta charset="utf-8"><title>Eurostat Data-Quality Report</title>
 <style>
 :root { --ink:#1f2933; --muted:#617080; --line:#e4e9f0; --bg:#f7f9fc;
-        --pass:#1a7f47; --pass-bg:#e4f5ea; --fail:#b42318; --fail-bg:#fdecea; --accent:#2a4d69; }
+        --pass:#1a7f47; --pass-bg:#e4f5ea; --fail:#b42318; --fail-bg:#fdecea;
+        --warn:#c2410c; --warn-bg:#fff2e6; --accent:#2a4d69; }
 * { box-sizing:border-box; }
 body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
        color:var(--ink); background:var(--bg); margin:0; padding:2rem 1rem; line-height:1.5; }
@@ -22,6 +23,7 @@ table.dq tr:nth-child(even) td { background:#fafcff; }
 .badge { display:inline-block; padding:.1rem .55rem; border-radius:999px; font-size:.78rem; font-weight:700; }
 .badge.pass { color:var(--pass); background:var(--pass-bg); }
 .badge.fail { color:var(--fail); background:var(--fail-bg); }
+.count.warn { color:var(--warn); background:var(--warn-bg); }
 .count { display:inline-block; background:var(--fail-bg); color:var(--fail); border-radius:999px;
          padding:.05rem .5rem; font-size:.8rem; font-weight:700; }
 .scroll { max-height:340px; overflow:auto; border:1px solid var(--line); border-radius:6px; }
@@ -35,7 +37,7 @@ figcaption { font-weight:700; color:var(--accent); margin-top:.6rem; font-size:1
 <body><main>
   <header>
     <h1>Eurostat Data-Quality Report</h1>
-    <p class="meta">Generated 2026-08-29 12:05 · 2 dataset(s) · Source: Eurostat</p>
+    <p class="meta">Generated 2026-08-29 12:44 · 2 dataset(s) · Source: Eurostat</p>
   </header>
   <p class="legend">
     <b>—</b> in a dimension row: the check reports a value, not a per-row failure count (see <i>passed</i>).<br>
@@ -100,7 +102,7 @@ figcaption { font-weight:700; color:var(--accent); margin-top:.6rem; font-size:1
     </tr>
   </tbody>
 </table>
-      <h3>Flagged rows <span class="count">208</span></h3>
+      <h3>Flagged rows <span class="count warn">208</span></h3>
       <div class="scroll"><table class="dataframe dq">
   <thead>
     <tr style="text-align: right;">
@@ -1650,7 +1652,7 @@ figcaption { font-weight:700; color:var(--accent); margin-top:.6rem; font-size:1
     </tr>
   </tbody>
 </table>
-      <h3>Flagged rows <span class="count">30</span></h3>
+      <h3>Flagged rows <span class="count warn">30</span></h3>
       <div class="scroll"><table class="dataframe dq">
   <thead>
     <tr style="text-align: right;">
