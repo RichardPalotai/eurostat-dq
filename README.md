@@ -1,8 +1,11 @@
 # Eurostat Data-Quality Pipeline
 
+[![CI](https://github.com/RichardPalotai/eurostat-dq/actions/workflows/ci.yml/badge.svg)](https://github.com/RichardPalotai/eurostat-dq/actions/workflows/ci.yml)
+
 Ingests two Eurostat datasets, cleans them, validates them across five data-quality
 dimensions (accuracy, completeness, consistency, uniqueness, timeliness), flags anomalies,
-and reports. A learning project applying statistics to real, messy public data.
+and produces a self-contained HTML quality report. A learning project applying statistics
+to real, messy public data — built with a config-driven design, a tested codebase, and CI.
 
 **Stack:** pandas · NumPy · SciPy · pydantic · great_expectations · scikit-learn · matplotlib · geopandas · eurostat/requests · pyarrow
 
@@ -19,7 +22,7 @@ ingest/clean/validate code serves both — adding a third means one new registry
 | Geography | NUTS 2 regions (`HU11`) | countries (`HU`) |
 | Filters | `age=TOTAL`, `sex=T` | `airpol=GHG`, `src_crf=TOTX4_MEMO`, `unit=THS_T` |
 | Unit | `NR` (persons) | `THS_T` (kt CO₂-eq) |
-| Valid `geo` | 346 NUTS 2 codes (len 4) | 31 country codes (len 2) |
+| Valid `geo` | 355 NUTS 2 codes (len 4) | 31 country codes (len 2) |
 | Value range | `0`–`20,000,000` | `0`–`2,000,000` |
 | Staleness threshold | 1 yr | 2 yr (inventories lag) |
 
@@ -132,10 +135,64 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
-Usage (CLI, `report` — not yet built):
+## Usage
+
+Run the whole pipeline (ingest → clean → validate → anomaly → figures → report) from the CLI:
+
 ```bash
-python -m eurostat_dq.cli --dataset demo_r_d2jan   # planned
+python -m eurostat_dq.cli                       # all datasets (uses the local cache)
+python -m eurostat_dq.cli --dataset demo_r_d2jan   # a single dataset
+python -m eurostat_dq.cli --no-cache            # force a fresh fetch from the API
+python -m eurostat_dq.cli --help                # options
 ```
+
+Output lands in `reports/`: the figures as PNGs and a self-contained
+`quality_report.html` (all figures inlined as base64, so it opens anywhere with no
+external files).
+
+## Testing
+
+```bash
+pytest
+```
+
+13 tests cover the schema validators, the wide→long reshape, the per-dataset slice
+(including the invariant `set(geo) ⊆ valid_geo`), and both anomaly detectors. All use
+small hand-built fixtures — **no network**, so they run in ~1.5s and pass in CI offline.
+GitHub Actions runs them on every push and pull request (see the badge above).
+
+## Results
+
+The pipeline produces a styled [`quality_report.html`](reports/quality_report.html) — per
+dataset, a PASS/FAIL badge per quality dimension, tables of flagged and failed rows, and the
+figures below with commentary.
+
+![Population by NUTS 2 region, 2024](reports/demo_choropleth_2024.png)
+
+*Population is strongly right-skewed: most NUTS 2 regions hold 1–2 million people, a handful
+(Île-de-France, Istanbul, Madrid, Lombardy) exceed 5 million. Grey = no matching geometry.*
+
+![GHG emissions relative to 1990](reports/env_trend_lines.png)
+
+*Indexed to 1990 = 100%, most countries cut emissions substantially (Estonia −75%, Latvia
+−63%); a few rose (Turkey +155%). Red markers are year-over-year anomalies from IsolationForest.*
+
+## What this demonstrates
+
+An end-to-end data pipeline built with production-style practices, applying statistics to
+real, messy public data:
+
+- **Config-driven design** — one dataset registry lets the same ingest/clean/validate code
+  serve any dataset; adding one is a single registry entry, not new code.
+- **A five-dimension data-quality framework** split across row-level (pydantic) and
+  dataset-level (great_expectations) checks — the exact vocabulary a data-quality role uses.
+- **EDA-driven modelling** — the anomaly method (per-geo, on year-over-year change) was chosen
+  *because* the distributions are right-skewed, not by default.
+- **Real data-quality findings**, documented: a mixed-unit duplication that broke uniqueness,
+  aggregate/residual rows that would have made checks tautological, and domain-reasoned
+  thresholds instead of observed ones.
+- **Tested and automated** — hermetic pytest suite + GitHub Actions CI + honest dependency
+  declaration (CI installs only declared deps, so undeclared imports fail the build).
 
 ## Status
 
@@ -147,9 +204,10 @@ python -m eurostat_dq.cli --dataset demo_r_d2jan   # planned
 | `schema.py` — pydantic row validation | ✅ |
 | `expectations.py` — 5 QA dimensions | ✅ |
 | `anomaly.py` — z-score + IsolationForest | ✅ |
-| `viz.py` — map + trend figures | ⬜ next |
-| `report.py` / `cli.py` | ⬜ |
-| tests + CI | ⬜ |
+| `viz.py` — map, trends, histograms, boxplots | ✅ |
+| `report.py` — self-contained HTML quality report | ✅ |
+| `cli.py` — end-to-end pipeline runner | ✅ |
+| tests (pytest) + CI (GitHub Actions) | ✅ |
 
 See [PROJECT.md](PROJECT.md) (build guide) and [PROJECT_PLAN.md](PROJECT_PLAN.md) (milestones/issues).
 

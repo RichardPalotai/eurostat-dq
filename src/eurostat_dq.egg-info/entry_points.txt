@@ -1,0 +1,2 @@
+[console_scripts]
+eurostat-dq = eurostat_dq.cli:main

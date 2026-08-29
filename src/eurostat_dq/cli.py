@@ -1,37 +1,50 @@
-import sys
+import argparse
+
 from .config import DATASETS
 from .ingest import fetch_dataset
 from .clean import to_tidy, apply_slice
 from .viz import generate_visuals
 from .report import write_report
 
-def run_pipeline(dataset: str = "", *, use_cache: bool) -> None:
-    if dataset == "all":
-        clean_DEMO = apply_slice(to_tidy(fetch_dataset("demo_r_d2jan", use_cache=use_cache)), DATASETS["demo_r_d2jan"])
-        clean_ENV = apply_slice(to_tidy(fetch_dataset("env_air_gge", use_cache=use_cache)), DATASETS["env_air_gge"])
-        generate_visuals(clean_DEMO, "demo_r_d2jan", use_cache=use_cache)
-        generate_visuals(clean_ENV, "env_air_gge", use_cache=use_cache)
-        write_report({"demo_r_d2jan" : clean_DEMO, "env_air_gge" : clean_ENV})
-    else:
-        clean = apply_slice(to_tidy(fetch_dataset(dataset, use_cache=use_cache)), DATASETS[dataset])
-        generate_visuals(clean, dataset, use_cache=use_cache)
-        write_report({dataset : clean})
 
-if len(sys.argv) == 3:
-    command, dataset = sys.argv[1:3]
-    cache = ""
-elif len(sys.argv) == 4:
-    command, dataset, cache = sys.argv[1:4]
+def run_pipeline(dataset: str, *, use_cache: bool) -> None:
+    """Run ingest → clean → figures → report for one dataset or all of them."""
+    codes = list(DATASETS) if dataset == "all" else [dataset]
 
-if command == "--dataset":
-    if dataset.lower() in ["demo_r_d2jan", "env_air_gge", "all"]:
-        if cache == "use_cache":
-            run_pipeline(dataset.lower(), use_cache=True)
-        elif cache == "":
-            run_pipeline(dataset.lower(), use_cache=False)
-        else:
-            print("Wrong cache choice!")
-    else:
-        print("No such dataset!")
-else:
-    print("No such command!")
+    cleaned = {}
+    for code in codes:
+        clean = apply_slice(to_tidy(fetch_dataset(code, use_cache=use_cache)), DATASETS[code])
+        generate_visuals(clean, code, use_cache=use_cache)
+        cleaned[code] = clean
+
+    write_report(cleaned)
+    print(f"Done → reports/quality_report.html ({len(codes)} dataset(s))")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="eurostat-dq",
+        description="Eurostat data-quality pipeline: ingest, validate, flag anomalies, report.",
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=[*DATASETS, "all"],
+        default="all",
+        help="dataset to process (default: all)",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="force a fresh fetch from the API instead of using the local cache",
+    )
+    args = parser.parse_args()
+
+    try:
+        run_pipeline(args.dataset, use_cache=not args.no_cache)
+    except Exception as e:
+        # library layer raises; the CLI is where errors become a clean message
+        parser.exit(1, f"error: {e}\n")
+
+
+if __name__ == "__main__":
+    main()
